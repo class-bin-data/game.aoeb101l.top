@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>塔罗牌游戏</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            overflow-x: auto;
+        }
+
+        .game-container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+        }
+
+        .title {
+            color: white;
+            font-size: 2.5rem;
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+
+        .card-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            padding: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+
+        .card {
+            width: 80px;
+            height: 120px;
+            background: linear-gradient(145deg, #2c3e50, #34495e);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            border: 2px solid #3498db;
+        }
+
+        .card:hover {
+            transform: translateY(-10px) scale(1.05);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+            border-color: #e74c3c;
+        }
+
+        .card.selected {
+            transform: translateY(-15px) scale(1.1);
+            border-color: #f39c12;
+            box-shadow: 0 10px 30px rgba(243, 156, 18, 0.5);
+        }
+
+        .card.moving {
+            transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            z-index: 1000;
+        }
+
+        .card.removed {
+            /* 移除 pointer-events: none，允许点击放大功能 */
+            opacity: 1;
+        }
+
+        .card.empty-slot {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            cursor: default;
+            pointer-events: none;
+        }
+
+        .card.empty-slot:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        .card-back {
+            width: 100%;
+            height: 100%;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-back img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+
+        .cross-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            gap: 20px;
+            width: 500px;
+            height: 500px;
+            margin: 30px auto 50px auto;
+            padding: 60px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            place-items: center;
+        }
+
+        /* 十字排阵布局 - 5个位置：中心、上、下、左、右 */
+        .cross-slot[data-position="center"] {
+            grid-column: 2;
+            grid-row: 2;
+        }
+
+        .cross-slot[data-position="top"] {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .cross-slot[data-position="bottom"] {
+            grid-column: 2;
+            grid-row: 3;
+        }
+
+        .cross-slot[data-position="left"] {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .cross-slot[data-position="right"] {
+            grid-column: 3;
+            grid-row: 2;
+        }
+
+        /* 隐藏不需要的位置 */
+        .cross-slot[data-position="top-left"],
+        .cross-slot[data-position="top-right"],
+        .cross-slot[data-position="bottom-left"],
+        .cross-slot[data-position="bottom-right"] {
+            display: none;
+        }
+
+        .cross-slot {
+            width: 80px;
+            height: 120px;
+            border: 2px dashed rgba(255,255,255,0.3);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .cross-slot.occupied {
+            border-color: #f39c12;
+            background: rgba(243, 156, 18, 0.1);
+        }
+
+        .cross-slot.highlight {
+            border-color: #e74c3c;
+            background: rgba(231, 76, 60, 0.2);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .instructions {
+            color: white;
+            text-align: center;
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .reset-btn {
+            background: linear-gradient(145deg, #e74c3c, #c0392b);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            margin-top: 40px;
+        }
+
+        .reset-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+
+        .card-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 6px;
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .card-back {
+            transition: transform 0.6s ease;
+        }
+
+        .card-image {
+            transition: transform 0.6s ease;
+        }
+
+        .card.flipped .card-back {
+            transform: rotateY(180deg);
+            opacity: 0;
+        }
+
+        .card.flipped .card-image {
+            display: block;
+            transform: rotateY(0deg);
+            opacity: 1;
+        }
+
+        /* 添加翻转动画 */
+        .card {
+            perspective: 1000px;
+        }
+
+        .card-back, .card-image {
+            backface-visibility: hidden;
+            transform-style: preserve-3d;
+        }
+
+        .card-image {
+            transform: rotateY(180deg);
+            opacity: 0;
+        }
+
+        /* 卡片放大功能 */
+        .card-zoom-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            backdrop-filter: blur(5px);
+        }
+
+        .card-zoom-overlay.active {
+            display: flex;
+        }
+
+        .card-zoom-container {
+            position: relative;
+            max-width: 90%;
+            max-height: 90%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .card-zoom {
+            width: 300px;
+            height: 450px;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            transform: scale(0.8);
+            transition: transform 0.3s ease;
+            cursor: pointer;
+        }
+
+        .card-zoom-overlay.active .card-zoom {
+            transform: scale(1);
+        }
+
+        .card-zoom .card-back,
+        .card-zoom .card-image {
+            width: 100%;
+            height: 100%;
+            border-radius: 15px;
+        }
+
+        .card-zoom .card-image {
+            display: block !important;
+            transform: none !important;
+            opacity: 1 !important;
+        }
+
+        .card-zoom .card-back {
+            display: none;
+        }
+
+        .card-zoom .card-back img {
+            background-image: url('back.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        .zoom-close-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 24px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .zoom-close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 768px) {
+            .card {
+                width: 60px;
+                height: 90px;
+            }
+            
+            .cross-slot {
+                width: 60px;
+                height: 90px;
+            }
+            
+            .cross-layout {
+                width: 380px;
+                height: 380px;
+                padding: 50px;
+            }
+            
+            .card-zoom {
+                width: 250px;
+                height: 375px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1 class="title">🔮 塔罗牌占卜游戏 🔮</h1>
+        <p class="instructions">点击5张牌组成十字排阵：中心→上→下→左→右，开始你的塔罗牌占卜之旅</p>
+        
+        <div class="card-row" id="cardRow">
+            <!-- 塔罗牌将通过JavaScript动态生成 -->
+        </div>
+        
+        <div class="cross-layout" id="crossLayout">
+            <!-- 十字排阵：5个位置 -->
+            <div class="cross-slot" data-position="top"></div>
+            <div class="cross-slot" data-position="left"></div>
+            <div class="cross-slot" data-position="center"></div>
+            <div class="cross-slot" data-position="right"></div>
+            <div class="cross-slot" data-position="bottom"></div>
+        </div>
+        
+        <button class="reset-btn" id="resetBtn">重新开始</button>
+    </div>
+
+    <!-- 卡片放大功能 -->
+    <div class="card-zoom-overlay" id="cardZoomOverlay">
+        <div class="card-zoom-container">
+            <div class="card-zoom" id="cardZoom">
+                <!-- 放大的卡片内容将在这里动态插入 -->
+            </div>
+            <button class="zoom-close-btn" id="zoomCloseBtn">×</button>
+        </div>
+    </div>
+
+    <script>
+        class TarotGame {
+            constructor() {
+                this.cards = [];
+                this.selectedCards = [];
+                this.crossPositions = ['center', 'top', 'bottom', 'left', 'right']; // 十字排阵顺序：中心、上、下、左、右
+                this.cardImages = this.generateCardImages();
+                this.audioContext = null;
+                this.init();
+            }
+
+            generateCardImages() {
+                const majorArcana = [
+                    '00-TheFool.jpg', '01-TheMagician.jpg', '02-TheHighPriestess.jpg',
+                    '03-TheEmpress.jpg', '04-TheEmperor.jpg', '05-TheHierophant.jpg',
+                    '06-TheLovers.jpg', '07-TheChariot.jpg', '08-Strength.jpg',
+                    '09-TheHermit.jpg', '10-WheelOfFortune.jpg', '11-Justice.jpg',
+                    '12-TheHangedMan.jpg', '13-Death.jpg', '14-Temperance.jpg',
+                    '15-TheDevil.jpg', '16-TheTower.jpg', '17-TheStar.jpg',
+                    '18-TheMoon.jpg', '19-TheSun.jpg', '20-Judgement.jpg', '21-TheWorld.jpg'
+                ];
+                
+                const suits = ['Cups', 'Pentacles', 'Swords', 'Wands'];
+                const minorArcana = [];
+                
+                suits.forEach(suit => {
+                    for (let i = 1; i <= 14; i++) {
+                        minorArcana.push(`${suit}${i.toString().padStart(2, '0')}.jpg`);
+                    }
+                });
+                
+                return [...majorArcana, ...minorArcana];
+            }
+
+            init() {
+                this.createCards();
+                this.setupEventListeners();
+                this.initAudio();
+            }
+
+            createCards() {
+                const cardRow = document.getElementById('cardRow');
+                cardRow.innerHTML = '';
+                
+                // 随机选择78张牌中的一部分来显示（比如30张）
+                const shuffledImages = [...this.cardImages].sort(() => Math.random() - 0.5);
+                const displayCount = Math.min(30, shuffledImages.length);
+                
+                for (let i = 0; i < displayCount; i++) {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.dataset.index = i;
+                    card.dataset.image = shuffledImages[i];
+                    
+                    const cardBack = document.createElement('div');
+                    cardBack.className = 'card-back';
+                    
+                    const backImage = document.createElement('img');
+                    backImage.src = 'back.jpg'; // 使用装饰性背面图片
+                    backImage.alt = '塔罗牌背面';
+                    backImage.onerror = function() {
+                        // 如果图片加载失败，显示美观的背面设计
+                        this.style.display = 'none';
+                        const placeholder = document.createElement('div');
+                        placeholder.style.cssText = `
+                            width: 100%;
+                            height: 100%;
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            border-radius: 6px;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-size: 14px;
+                            text-align: center;
+                            position: relative;
+                            overflow: hidden;
+                        `;
+                        
+                        // 添加装饰性元素
+                        const star = document.createElement('div');
+                        star.style.cssText = `
+                            position: absolute;
+                            top: 50%;
+                            left: 50%;
+                            width: 30px;
+                            height: 30px;
+                            background: radial-gradient(circle, rgba(255,255,255,0.3), rgba(255,255,255,0.1));
+                            border-radius: 50%;
+                            transform: translate(-50%, -50%);
+                        `;
+                        
+                        placeholder.appendChild(star);
+                        placeholder.innerHTML = '🔮<br>塔罗牌';
+                        this.parentNode.appendChild(placeholder);
+                    };
+                    cardBack.appendChild(backImage);
+                    
+                    const cardImage = document.createElement('img');
+                    cardImage.className = 'card-image';
+                    cardImage.src = `塔罗牌图片/塔罗牌图片/${shuffledImages[i]}`;
+                    cardImage.alt = `塔罗牌 ${shuffledImages[i]}`;
+                    cardImage.onerror = function() {
+                        // 如果图片加载失败，显示一个占位符
+                        this.style.display = 'none';
+                        const placeholder = document.createElement('div');
+                        placeholder.style.cssText = `
+                            width: 100%;
+                            height: 100%;
+                            background: linear-gradient(45deg, #8e44ad, #9b59b6);
+                            border-radius: 6px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-size: 12px;
+                            text-align: center;
+                        `;
+                        placeholder.textContent = '塔罗牌';
+                        this.parentNode.appendChild(placeholder);
+                    };
+                    
+                    card.appendChild(cardBack);
+                    card.appendChild(cardImage);
+                    cardRow.appendChild(card);
+                    
+                    this.cards.push(card);
+                }
+            }
+
+            setupEventListeners() {
+                this.cards.forEach(card => {
+                    card.addEventListener('click', () => this.selectCard(card));
+                });
+                
+                document.getElementById('resetBtn').addEventListener('click', () => this.resetGame());
+                
+                // 卡片放大功能
+                document.getElementById('zoomCloseBtn').addEventListener('click', () => this.closeZoom());
+                document.getElementById('cardZoomOverlay').addEventListener('click', (e) => {
+                    if (e.target === document.getElementById('cardZoomOverlay')) {
+                        this.closeZoom();
+                    }
+                });
+            }
+
+            initAudio() {
+                try {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                } catch (e) {
+                    console.log('Web Audio API not supported');
+                }
+            }
+
+            playClickSound() {
+                if (!this.audioContext) return;
+                
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(400, this.audioContext.currentTime + 0.1);
+                
+                gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+                
+                oscillator.start(this.audioContext.currentTime);
+                oscillator.stop(this.audioContext.currentTime + 0.1);
+            }
+
+            selectCard(card) {
+                if (this.selectedCards.length >= 5) return;
+                if (card.classList.contains('selected') || card.classList.contains('removed')) return;
+                
+                this.playClickSound();
+                this.selectedCards.push(card);
+                card.classList.add('selected');
+                
+                // 移动卡片到十字形位置
+                setTimeout(() => {
+                    this.moveCardToCross(card);
+                }, 300);
+            }
+
+            moveCardToCross(card) {
+                const crossLayout = document.getElementById('crossLayout');
+                const crossSlots = crossLayout.querySelectorAll('.cross-slot');
+                const currentPosition = this.selectedCards.length - 1;
+                const targetPosition = this.crossPositions[currentPosition];
+                const targetSlot = crossLayout.querySelector(`[data-position="${targetPosition}"]`);
+                
+                // 在移动前记录原位置
+                const cardRow = document.getElementById('cardRow');
+                const originalPosition = Array.from(cardRow.children).indexOf(card);
+                
+                // 获取卡片当前位置
+                const cardRect = card.getBoundingClientRect();
+                const targetRect = targetSlot.getBoundingClientRect();
+                
+                // 计算移动距离
+                const deltaX = targetRect.left - cardRect.left;
+                const deltaY = targetRect.top - cardRect.top;
+                
+                // 添加移动动画类
+                card.classList.add('moving');
+                card.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(1)`;
+                card.style.zIndex = '1000';
+                
+                // 动画完成后
+                setTimeout(() => {
+                    // 移除移动动画类，但保持卡片可见
+                    card.classList.remove('moving', 'selected');
+                    card.classList.add('removed');
+                    
+                    // 将卡片移动到目标位置
+                    targetSlot.classList.add('occupied');
+                    targetSlot.appendChild(card);
+                    
+                    // 重置卡片样式，确保在目标位置正确显示
+                    card.style.transform = '';
+                    card.style.zIndex = '';
+                    card.style.position = 'relative';
+                    card.style.width = '80px';
+                    card.style.height = '120px';
+                    
+                    // 在卡片移动完成后创建空缺位置
+                    this.createEmptySlotAtPosition(card, originalPosition);
+                    
+                    // 翻转卡片显示正面
+                    setTimeout(() => {
+                        card.classList.add('flipped');
+                        
+                        // 添加点击放大功能
+                        card.addEventListener('click', (e) => {
+                            e.stopPropagation(); // 防止事件冒泡
+                            this.showCardZoom(card);
+                        });
+                        card.style.cursor = 'pointer';
+                        card.classList.add('zoomable'); // 添加可放大标识
+                    }, 200);
+                    
+                    // 高亮下一个位置
+                    if (this.selectedCards.length < 5) {
+                        const nextPosition = this.crossPositions[this.selectedCards.length];
+                        const nextSlot = crossLayout.querySelector(`[data-position="${nextPosition}"]`);
+                        nextSlot.classList.add('highlight');
+                    }
+                    
+                }, 800);
+            }
+
+            createEmptySlotAtPosition(originalCard, originalPosition) {
+                // 获取原卡片的位置信息
+                const originalIndex = originalCard.dataset.index;
+                const cardRow = document.getElementById('cardRow');
+                
+                // 创建空缺位置元素
+                const emptySlot = document.createElement('div');
+                emptySlot.className = 'card empty-slot';
+                emptySlot.dataset.index = originalIndex;
+                emptySlot.dataset.empty = 'true';
+                
+                // 设置空缺位置的样式
+                emptySlot.style.width = '80px';
+                emptySlot.style.height = '120px';
+                emptySlot.style.borderRadius = '8px';
+                emptySlot.style.display = 'flex';
+                emptySlot.style.alignItems = 'center';
+                emptySlot.style.justifyContent = 'center';
+                emptySlot.style.color = 'rgba(255, 255, 255, 0.5)';
+                emptySlot.style.fontSize = '12px';
+                emptySlot.style.textAlign = 'center';
+                emptySlot.innerHTML = '已选择';
+                
+                // 在指定位置插入空缺
+                if (originalPosition !== -1 && originalPosition < cardRow.children.length) {
+                    cardRow.insertBefore(emptySlot, cardRow.children[originalPosition]);
+                } else {
+                    // 如果位置无效，添加到末尾
+                    cardRow.appendChild(emptySlot);
+                }
+            }
+
+            showCardZoom(card) {
+                const zoomOverlay = document.getElementById('cardZoomOverlay');
+                const zoomCard = document.getElementById('cardZoom');
+                
+                // 复制卡片内容到放大视图
+                const cardImage = card.querySelector('.card-image');
+                if (cardImage) {
+                    zoomCard.innerHTML = '';
+                    const newImg = document.createElement('img');
+                    newImg.src = cardImage.src;
+                    newImg.alt = cardImage.alt;
+                    newImg.className = 'card-image';
+                    zoomCard.appendChild(newImg);
+                }
+                
+                // 显示放大视图
+                zoomOverlay.classList.add('active');
+                document.body.style.overflow = 'hidden'; // 防止背景滚动
+            }
+
+            closeZoom() {
+                const zoomOverlay = document.getElementById('cardZoomOverlay');
+                zoomOverlay.classList.remove('active');
+                document.body.style.overflow = ''; // 恢复滚动
+            }
+
+            resetGame() {
+                this.selectedCards = [];
+                
+                // 清理所有空缺位置
+                const emptySlots = document.querySelectorAll('.card.empty-slot');
+                emptySlots.forEach(slot => slot.remove());
+                
+                // 重置所有卡片
+                this.cards.forEach(card => {
+                    card.classList.remove('selected', 'moving', 'removed', 'flipped');
+                    card.style.transform = '';
+                    card.style.zIndex = '';
+                });
+                
+                // 重置十字形位置
+                const crossSlots = document.querySelectorAll('.cross-slot');
+                crossSlots.forEach(slot => {
+                    slot.classList.remove('occupied', 'highlight');
+                    slot.innerHTML = '';
+                });
+                
+                // 重新创建卡片
+                this.cards = [];
+                this.createCards();
+                this.setupEventListeners();
+            }
+        }
+
+        // 初始化游戏
+        document.addEventListener('DOMContentLoaded', () => {
+            new TarotGame();
+        });
+    </script>
+</body>
+</html>
+
